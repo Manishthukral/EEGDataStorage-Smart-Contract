@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface BCISoftwareVerificationInterface {
+    function isSoftwarePatchVerified(uint256 _licenseNumber, bytes32 _hash) external view returns (bool);
+}
+
+contract EEGDataStorage {
+    struct Doctor {
+        address account;
+        string name;
+        bool isRegistered;
+    }
+
+    struct Patient {
+        string name;
+        bool isRegistered;
+        address doctorAddress;
+        uint256[] eegDataIndices; // Array of indices pointing to the patient's EEG data
+    }
+
+    struct EEGData {
+        string encryptedData;
+        string patientName;
+        string date;
+    }
+
+    mapping(address => Doctor) public doctors;
+    mapping(address => Patient) public patients;
+    mapping(address => bool) public softwareProfessionals; // Mapping to track registered software professionals
+    EEGData[] public eegData;
+
+    address public authority;
+    BCISoftwareVerificationInterface public softwareVerificationContract; // Reference to BCISoftwareVerification contract
+
+    modifier onlyAuthority() {
+        require(msg.sender == authority, "Only the authority can perform this action");
+        _;
+    }
+
+    modifier onlyRegisteredDoctor() {
+        require(doctors[msg.sender].isRegistered, "Only registered doctors can perform this action");
+        _;
+    }
+
+    modifier onlySoftwareProfessional() {
+        require(softwareProfessionals[msg.sender], "Only registered software professionals can perform this action");
+        _;
+    }
+
+    constructor(address _softwareVerificationContract) {
+        authority = msg.sender;
+        softwareVerificationContract = BCISoftwareVerificationInterface(_softwareVerificationContract);
+    }
+
+    event DoctorRegistered(address indexed doctorAddress, string name);
+    event PatientRegistered(address indexed patientAddress, string name, address indexed doctorAddress);
+    event EEGDataStored(uint256 indexed index, address indexed patientAddress, string date);
+
+    function registerDoctor(address _doctorAddress, string memory _name) external onlyAuthority {
+        require(!doctors[_doctorAddress].isRegistered, "Doctor is already registered");
+
+        doctors[_doctorAddress] = Doctor(_doctorAddress, _name, true);
+        emit DoctorRegistered(_doctorAddress, _name);
+    }
+
+    function registerPatient(address _patientAddress, string memory _name) external onlyRegisteredDoctor {
+        require(doctors[msg.sender].isRegistered, "Doctor is not registered");
+
+        patients[_patientAddress] = Patient(_name, true, msg.sender, new uint256[](0));
+        emit PatientRegistered(_patientAddress, _name, msg.sender);
+    }
+
+    function storeEEGData(
+        address _patientAddress,
+        string memory _encryptedData,
+        string memory _patientName,
+        string memory _date
+    ) external onlyRegisteredDoctor {
+        require(patients[_patientAddress].isRegistered, "Patient is not registered");
+
+        uint256 index = eegData.length;
+        EEGData memory data = EEGData(_encryptedData, _patientName, _date);
+        eegData.push(data);
+
+        patients[_patientAddress].eegDataIndices.push(index);
+
+        emit EEGDataStored(index, _patientAddress, _date);
+    }
+
+    function getPatientEEGDataCount(address _patientAddress) external view returns (uint256) {
+        require(patients[_patientAddress].isRegistered, "Patient is not registered");
+
+        return patients[_patientAddress].eegDataIndices.length;
+    }
+
+    function getPatientEEGData(address _patientAddress, uint256 _index)
+        external
+        view
+        returns (
+            string memory encryptedData,
+            string memory patientName,
+            string memory date
+        )
+    {
+        require(patients[_patientAddress].isRegistered, "Patient is not registered");
+        require(_index < patients[_patientAddress].eegDataIndices.length, "Invalid index");
+
+        uint256 dataIndex = patients[_patientAddress].eegDataIndices[_index];
+        EEGData storage data = eegData[dataIndex];
+
+        return (data.encryptedData, data.patientName, data.date);
+    }
+
+    function registerSoftwareProfessional(address _softwareProfessionalAddress) external onlyAuthority {
+        require(!softwareProfessionals[_softwareProfessionalAddress], "Software professional is already registered");
+
+        softwareProfessionals[_softwareProfessionalAddress] = true;
+    }
+
+    function isSoftwarePatchVerified(uint256 _licenseNumber, bytes32 _hash) external view onlySoftwareProfessional returns (bool) {
+        return softwareVerificationContract.isSoftwarePatchVerified(_licenseNumber, _hash);
+    }
+}
+
