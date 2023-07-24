@@ -1,0 +1,45 @@
+pragma solidity ^0.8.0;
+
+contract BCISoftwareVerification {
+    struct SoftwarePatch {
+        bytes32 hash;
+        bool isVerified;
+    }
+
+    address public owner;
+    mapping(uint256 => SoftwarePatch) public softwarePatches;
+
+    event SoftwarePatchVerified(uint256 indexed licenseNumber, bytes32 hash);
+    event SoftwarePatchUpdated(uint256 indexed licenseNumber, bytes32 newHash);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the contract owner can call this function.");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function verifySoftwarePatch(uint256 licenseNumber, bytes32 hash) external onlyOwner {
+        require(!softwarePatches[licenseNumber].isVerified, "Software patch is already verified.");
+        
+        softwarePatches[licenseNumber].hash = hash;
+        softwarePatches[licenseNumber].isVerified = true;
+
+        emit SoftwarePatchVerified(licenseNumber, hash);
+    }
+
+    function updateSoftwarePatch(uint256 licenseNumber, bytes32 newHash) external onlyOwner {
+        require(softwarePatches[licenseNumber].isVerified, "Software patch is not verified yet.");
+
+        softwarePatches[licenseNumber].hash = newHash;
+
+        emit SoftwarePatchUpdated(licenseNumber, newHash);
+    }
+
+    function isSoftwarePatchVerified(uint256 licenseNumber, bytes32 hash) external view returns (bool) {
+        return softwarePatches[licenseNumber].hash == hash && softwarePatches[licenseNumber].isVerified;
+    }
+}
+
